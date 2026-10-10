@@ -505,7 +505,7 @@ export class Screens {
     p.appendChild(el('hr', { class: 'hr' }));
     p.appendChild(settingRow('Snap to grid', 'Road ends jump to a 20 m grid', toggle(s.gridSnap, (v) => set('gridSnap', v)).root));
     p.appendChild(settingRow('Snap angles', 'Straight, 45° and diagonal strokes stay tidy', toggle(s.angleSnap, (v) => set('angleSnap', v)).root));
-    p.appendChild(settingRow('Day / night cycle', 'Endless and sandbox worlds drift into night', toggle(s.dayNight, (v) => set('dayNight', v)).root));
+    p.appendChild(settingRow('Day / night cycle', 'Endless and sandbox cities drift into night', toggle(s.dayNight, (v) => set('dayNight', v)).root));
     p.appendChild(
       settingRow(
         'Colour-blind marks', 'Districts also show R / C / I letters',
@@ -564,7 +564,7 @@ export class Screens {
 
     const sections: [string, string, string][] = [
       ['street', 'Draw roads', 'Drag with one finger (or the mouse) to pave. Roads snap to junctions, crossings and the grid, so networks knit together on their own.'],
-      ['highway', 'Freeways fly over', 'Freeways are grade separated: they cross streets without connecting. To get traffic on or off, end the freeway at a street — that becomes a ramp.'],
+      ['highway', 'Arterials fly over', 'Arterials are grade separated: they cross streets without connecting. To get traffic on or off, end the arterial at a street — that becomes a ramp.'],
       ['bridge', 'Water costs more', 'Bridges are roughly twice the price of land. Cross a river once, on the best line, rather than four times.'],
       ['coin', 'Fares fund growth', 'Every delivered commuter pays a fare based on trip length. Your starting budget only covers part of the city — the rest is earned.'],
       ['bulldoze', 'Demolish and undo', 'The bulldozer refunds a third of what a road cost. Undo (Z) rewinds whole strokes, so experiment freely.'],
@@ -619,7 +619,7 @@ export class Screens {
       ['10 km of road', s.roadLength >= 10000],
       ['A perfect ★★★ level', LEVELS.some((l) => (pr.campaign[l.id]?.stars ?? 0) === 3)],
       ['Chapter 1 cleared', levelsForChapter(0).every((l) => (pr.campaign[l.id]?.stars ?? 0) > 0)],
-      ['Freeways unlocked', levelsForChapter(2).some((l) => (pr.campaign[l.id]?.stars ?? 0) > 0)],
+      ['Arterials unlocked', levelsForChapter(2).some((l) => (pr.campaign[l.id]?.stars ?? 0) > 0)],
       ['Survived a daily', s.dailyStreak > 0],
       ['Endless 1,000', s.endlessBest >= 1000],
       ['The whole campaign', LEVELS.every((l) => (pr.campaign[l.id]?.stars ?? 0) > 0)],
@@ -714,7 +714,7 @@ export class Screens {
       '1200',
       (v) => (size = parseInt(v, 10)),
     );
-    p.appendChild(el('div', { class: 'eyebrow', text: 'NEW WORLD' }));
+    p.appendChild(el('div', { class: 'eyebrow', text: 'NEW CITY' }));
     p.appendChild(
       el('div', { class: 'row', style: { gap: '8px', marginTop: '6px' } }, [
         seedInput,
@@ -736,7 +736,7 @@ export class Screens {
     p.appendChild(el('div', { class: 'eyebrow', text: `SAVED CITIES (${this.ctx.sandbox.length})` }));
     const list = el('div', { class: 'savelist', style: { marginTop: '8px' } });
     if (!this.ctx.sandbox.length) {
-      list.appendChild(el('div', { class: 'tiny dim', text: 'Nothing saved yet. Use the save button while building a sandbox world.' }));
+      list.appendChild(el('div', { class: 'tiny dim', text: 'Nothing saved yet. Use the save button while building a sandbox city.' }));
     }
     for (const s of this.ctx.sandbox) {
       const item = el('div', { class: 'saveitem' }, [

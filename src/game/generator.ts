@@ -47,15 +47,16 @@ export function generateLevel(opts: GenOpts): LevelDef {
   // ---- terrain ------------------------------------------------------------
   const waterRoll = rng.next();
   const terrain: TerrainSpec = {
-    sea: rng.float(0.02, 0.1 + difficulty * 0.006),
-    forest: rng.float(0.1, 0.4),
-    rock: rng.float(0.02, 0.24),
-    rivers: waterRoll > 0.42 ? rng.int(1, difficulty > 5 ? 3 : 2) : 0,
+    sea: 0,
+    border: 'none',
+    coast: 'none',
+    forest: rng.float(0.06, 0.2),
+    rock: rng.float(0, 0.08),
+    rivers: waterRoll > 0.62 ? 1 : 0,
     riverDir: rng.pick(['h', 'v', 'd', 'any'] as ('h' | 'v' | 'd' | 'any')[]),
-    riverWidth: rng.float(18, 40),
-    lakes: waterRoll < 0.28 ? rng.int(1, 3) : 0,
-    coast: rng.chance(0.25) ? rng.pick(['n', 's', 'e', 'w'] as ('n' | 's' | 'e' | 'w')[]) : 'none',
-    urban: [],
+    riverWidth: rng.float(12, 22),
+    lakes: waterRoll < 0.16 ? 1 : 0,
+    urban: [[0.5, 0.5, 0.5]],
     blocks: [],
   };
   const urbanCount = rng.int(1, Math.min(4, 1 + Math.floor(zoneCount / 3)));
@@ -74,19 +75,18 @@ export function generateLevel(opts: GenOpts): LevelDef {
   const kinds: ZoneKind[] = ['R', 'C', 'I'];
   let attempts = 0;
   while (zoneList.length < zoneCount && attempts++ < 900) {
-    const edgeBias = rng.chance(0.55);
+    const edgeBias = rng.chance(0.2);
     let x: number;
     let y: number;
     if (edgeBias) {
-      // push districts toward the rim so routes are long and interesting
       const side = rng.int(0, 3);
-      const t = rng.float(0.12, 0.88);
-      const m = rng.float(0.08, 0.24);
+      const t = rng.float(0.22, 0.78);
+      const m = rng.float(0.18, 0.32);
       x = side === 0 ? m : side === 1 ? 1 - m : t;
       y = side === 2 ? m : side === 3 ? 1 - m : t;
     } else {
-      x = rng.float(0.12, 0.88);
-      y = rng.float(0.12, 0.88);
+      x = rng.float(0.18, 0.82);
+      y = rng.float(0.18, 0.82);
     }
     const minSep = clamp(0.62 / Math.sqrt(zoneCount), 0.14, 0.34);
     let ok = true;

@@ -1,10 +1,10 @@
 /**
- * Procedural terrain.
+ * City fabric.
  *
- * The world is a square of `size` world units. Types are stored on a coarse
- * grid (one cell = CELL world units) which keeps generation fast even on
- * phones; the painted texture is upscaled with bilinear sampling so shores and
- * forest edges look soft instead of blocky.
+ * The playable area is one neighbourhood, not a world map. Land is a block
+ * grid (streets, roofs, parks, works yards). Water only appears where a level
+ * asks for a canal, a pond or a waterfront — never as an ocean ringing an
+ * island. Types live on a coarse grid (one cell = CELL world units).
  */
 
 import { Noise2D, RNG, hashString, mixSeeds } from '../core/rng';
@@ -126,10 +126,12 @@ export class Terrain {
     this.noise2 = new Noise2D(new RNG(mixSeeds(this.seed, 'm')));
 
     const { cols, rows } = this;
-    const seaFrac = clamp01(spec.sea ?? 0.05);
-    const forestAmt = spec.forest ?? 0.28;
-    const rockAmt = spec.rock ?? 0.1;
-    const border = spec.border ?? (spec.coast && spec.coast !== 'none' ? 'island' : 'soft');
+    const seaFrac = clamp01(spec.sea ?? 0);
+    const forestAmt = spec.forest ?? 0.14;
+    const rockAmt = spec.rock ?? 0;
+    // 'none' unless a level explicitly wants an island. A soft edge used to
+    // sink the border into the sea and the whole neighbourhood read as a continent.
+    const border = spec.border ?? 'none';
     // noise frequency in "features across the map", independent of cell count
     const freq = 2.6;
 
@@ -150,8 +152,8 @@ export class Terrain {
           const falloff = smoothstep(edge / 0.42);
           h = h * (0.3 + 0.7 * falloff) - (1 - falloff) * 0.75;
         } else if (border === 'soft') {
-          const falloff = smoothstep(edge / 0.12);
-          h = h * (0.82 + 0.18 * falloff) - (1 - falloff) * 0.22;
+          const falloff = smoothstep(edge / 0.18);
+          h = h * (0.9 + 0.1 * falloff) - (1 - falloff) * 0.08;
         }
 
         if (spec.coast && spec.coast !== 'none') {
@@ -188,7 +190,7 @@ export class Terrain {
     for (let l = 0; l < lakes; l++) {
       const cx = rng.float(0.18, 0.82) * cols;
       const cy = rng.float(0.18, 0.82) * rows;
-      const rad = rng.float(0.07, 0.15) * cols;
+      const rad = rng.float(0.035, 0.07) * cols;
       const squash = rng.float(0.65, 1.3);
       const rot = rng.float(0, Math.PI);
       const cr = Math.cos(rot);
@@ -210,50 +212,81 @@ export class Terrain {
       }
     }
 
-    // 4. classify -------------------------------------------------------------
+    // 4. classify as a neighbourhood, not a continent ------------------------
+    // Parks are a capped slice of the block grid. Works yards are a few lots,
+    // not a mountain range. Water is only canals, ponds and a waterfront.
+    const parkNoise = new Float32Array(cols * rows);
+    for (let cy = 0; cy < rows; cy++) {
+      for (let cx = 0; cx < cols; cx++) {
+        parkNoise[this.idx(cx, cy)] = this.noise2.fbm((cx / cols) * 5.5 + 4, (cy / rows) * 5.5 - 2, 3);
+      }
+    }
+    const parkSorted = Float32Array.from(parkNoise).sort();
+    const parkFrac = clamp(forestAmt * 0.34, 0, 0.2);
+    const parkCut = parkSorted[clamp(Math.floor((1 - parkFrac) * (parkSorted.length - 1)), 0, parkSorted.length - 1)];
+    const harbor = !!(spec.coast && spec.coast !== 'none');
+    void range;
+    void sandLevel;
+    void rockLevel;
+    void seaLevel;
+    void deepLevel;
+
     for (let cy = 0; cy < rows; cy++) {
       for (let cx = 0; cx < cols; cx++) {
         const i = this.idx(cx, cy);
-        const h = this.heights[i];
         const riv = riverField ? riverField[i] : 0;
         const lake = lakeField[i];
-        let t: number;
-        if (riv > 0.06 || lake > 0.14 || h < deepLevel) t = T_DEEP;
-        else if (h < seaLevel) t = T_WATER;
-        else if (h < sandLevel) t = T_SAND;
-        else if (h > rockLevel) t = T_ROCK;
-        else {
-          const m = this.noise2.fbm((cx / cols) * 9 + 7, (cy / rows) * 9 - 3, 3);
-          const hn = (h - sandLevel) / range;
-          t = m > 0.34 - forestAmt * 0.62 - hn * 0.1 ? T_FOREST : T_GRASS;
-        }
+        const coastT = harbor ? this.coastFalloff(cx / cols, cy / rows, spec.coast!) : 0;
+        let t = T_URBAN;
+        if (riv > 0.08 || lake > 0.22) t = T_DEEP;
+        else if (riv > 0.03 || lake > 0.1) t = T_WATER;
+        else if (coastT > 0.55 && seaFrac > 0) t = coastT > 0.82 ? T_DEEP : T_WATER;
+        else if (parkNoise[i] > parkCut) t = parkNoise[i] > parkCut + 0.08 ? T_FOREST : T_GRASS;
         this.types[i] = t;
-        // keep a smooth height field for shading even where we forced water
-        if (riv > 0.06 || lake > 0.14) this.heights[i] = Math.min(h, deepLevel);
+        if (t <= T_WATER) this.heights[i] = Math.min(this.heights[i], this.seaLevel);
       }
     }
 
-    // 5. beaches: any land next to water becomes sand ------------------------
-    const copy = this.types.slice();
-    for (let cy = 0; cy < rows; cy++) {
-      for (let cx = 0; cx < cols; cx++) {
-        const i = this.idx(cx, cy);
-        if (copy[i] !== T_GRASS && copy[i] !== T_FOREST) continue;
-        let near = false;
-        for (let dy = -1; dy <= 1 && !near; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const nx = cx + dx;
-            const ny = cy + dy;
-            if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-            const t = copy[this.idx(nx, ny)];
-            if (t === T_WATER || t === T_DEEP) {
-              near = true;
-              break;
+    // snap parks onto whole blocks so they read as parks, not continental blobs
+    const BC = 14;
+    for (let by = 0; by < rows; by += BC) {
+      for (let bx = 0; bx < cols; bx += BC) {
+        let park = 0;
+        let water = 0;
+        let n = 0;
+        const x1 = Math.min(cols, bx + BC);
+        const y1 = Math.min(rows, by + BC);
+        for (let y = by + 2; y < y1 - 1; y++) {
+          for (let x = bx + 2; x < x1 - 1; x++) {
+            const t = this.types[this.idx(x, y)];
+            n++;
+            if (t === T_GRASS || t === T_FOREST) park++;
+            if (t <= T_WATER) water++;
+          }
+        }
+        if (!n || water > n * 0.25) continue;
+        const makePark = park > n * 0.42;
+        for (let y = by; y < y1; y++) {
+          for (let x = bx; x < x1; x++) {
+            const i = this.idx(x, y);
+            const edge = x < bx + 2 || y < by + 2 || x >= x1 - 1 || y >= y1 - 1;
+            if (this.types[i] <= T_WATER || this.types[i] === T_BLOCK) continue;
+            if (!makePark) {
+              if (this.types[i] === T_GRASS || this.types[i] === T_FOREST) this.types[i] = T_URBAN;
+            } else if (!edge) {
+              this.types[i] = park > n * 0.7 ? T_FOREST : T_GRASS;
             }
           }
         }
-        if (near) this.types[i] = T_SAND;
       }
+    }
+
+    // industrial lots — local yards you pay extra to pave, not grey continents
+    const lots = Math.round(clamp01(rockAmt) * 6);
+    for (let n = 0; n < lots; n++) {
+      const lx = rng.float(0.12, 0.88);
+      const ly = rng.float(0.12, 0.88);
+      this.stampCircle(lx * cols, ly * rows, rng.float(0.035, 0.07) * cols, T_ROCK, false);
     }
 
     // 6. urban patches & forbidden blocks ------------------------------------
@@ -497,79 +530,137 @@ export class Terrain {
     const data = img.data;
     const cols = this.cols;
     const rows = this.rows;
-    const pxPerCellX = fullW / cols;
-    const pxPerCellY = fullH / rows;
-    const blockScale = 0.55; // city blocks every ~N cells
-    const grainRng = new RNG(mixSeeds(this.seed, 'tex'));
-    const grainTable = new Uint8Array(1024);
-    for (let i = 0; i < grainTable.length; i++) grainTable[i] = Math.floor(grainRng.next() * 13) - 6;
+    const BLOCK = 56;
+    const STREET = 11;
 
     for (let pyi = 0; pyi < ch; pyi++) {
       const py = oy + pyi;
+      const wy = ((py + 0.5) / fullH) * this.size;
       const gy = (py / fullH) * rows - 0.5;
       const y0 = Math.max(0, Math.min(rows - 1, Math.floor(gy)));
-      const y1 = Math.min(rows - 1, y0 + 1);
-      const fy = clamp01(gy - y0);
       for (let pxi = 0; pxi < cw; pxi++) {
         const px = ox + pxi;
+        const wx = ((px + 0.5) / fullW) * this.size;
         const gx = (px / fullW) * cols - 0.5;
         const x0 = Math.max(0, Math.min(cols - 1, Math.floor(gx)));
-        const x1 = Math.min(cols - 1, x0 + 1);
-        const fx = clamp01(gx - x0);
+        const local = this.types[this.idx(x0, y0)];
+        const bx0 = Math.floor(wx / BLOCK);
+        const by0 = Math.floor(wy / BLOCK);
+        const lx0 = wx - bx0 * BLOCK;
+        const ly0 = wy - by0 * BLOCK;
+        const onStreet = lx0 < STREET || ly0 < STREET;
+        const center = this.typeAt((bx0 + 0.5) * BLOCK, (by0 + 0.5) * BLOCK);
+        const t = local <= T_WATER || local === T_BLOCK ? local : onStreet ? T_URBAN : center;
 
-        const i00 = this.idx(x0, y0) * 3;
-        const i10 = this.idx(x1, y0) * 3;
-        const i01 = this.idx(x0, y1) * 3;
-        const i11 = this.idx(x1, y1) * 3;
-        const w00 = (1 - fx) * (1 - fy);
-        const w10 = fx * (1 - fy);
-        const w01 = (1 - fx) * fy;
-        const w11 = fx * fy;
-
-        let r = this.colors[i00] * w00 + this.colors[i10] * w10 + this.colors[i01] * w01 + this.colors[i11] * w11;
-        let g =
-          this.colors[i00 + 1] * w00 + this.colors[i10 + 1] * w10 + this.colors[i01 + 1] * w01 + this.colors[i11 + 1] * w11;
-        let b =
-          this.colors[i00 + 2] * w00 + this.colors[i10 + 2] * w10 + this.colors[i01 + 2] * w01 + this.colors[i11 + 2] * w11;
-
-        // city block texture inside urban areas
-        const t00 = this.types[this.idx(x0, y0)];
-        if (t00 === T_URBAN || t00 === T_BLOCK) {
-          const wx = (px / pxPerCellX) * blockScale;
-          const wy = (py / pxPerCellY) * blockScale;
-          const grid = Math.min(Math.abs((wx % 1) - 0.5), Math.abs((wy % 1) - 0.5));
-          const roadLine = grid < 0.07 ? 1 : 0;
-          if (roadLine) {
-            r += 26;
-            g += 28;
-            b += 30;
-          } else {
-            const shade = ((Math.floor(wx) * 7 + Math.floor(wy) * 13) % 5) * 4 - 8;
-            r += shade;
-            g += shade;
-            b += shade + 2;
+        let r = 74;
+        let g = 78;
+        let b = 82;
+        if (t === T_DEEP || t === T_WATER) {
+          const deep = t === T_DEEP;
+          r = deep ? 14 : 26;
+          g = deep ? 78 : 112;
+          b = deep ? 118 : 148;
+          const ripple = Math.sin(wx * 0.08 + wy * 0.05) * 4;
+          g += ripple;
+          b += ripple * 0.6;
+        } else if (t === T_GRASS || t === T_FOREST) {
+          r = 86;
+          g = 138;
+          b = 78;
+          const tx = Math.floor(wx / 16);
+          const ty = Math.floor(wy / 16);
+          const trunk = ((tx * 17 + ty * 11) % 5) === 0;
+          if (trunk) {
+            const lx = wx - tx * 16 - 8;
+            const ly = wy - ty * 16 - 8;
+            if (lx * lx + ly * ly < 22) {
+              r = 36;
+              g = 92;
+              b = 48;
+            }
           }
-        } else if (t00 === T_FOREST) {
-          const wx = px * 0.35;
-          const wy = py * 0.35;
-          const d = Math.sin(wx) * Math.cos(wy) * 6;
-          r += d;
-          g += d * 1.5;
-          b += d;
-        } else if (t00 === T_DEEP || t00 === T_WATER) {
-          const wx = px * 0.06;
-          const wy = py * 0.06;
-          const d = (Math.sin(wx + wy * 0.6) + Math.sin(wx * 0.5 - wy)) * 2.2;
-          r += d * 0.4;
-          g += d * 0.8;
-          b += d * 1.4;
+          if (t === T_FOREST) {
+            r -= 12;
+            g -= 16;
+          }
+        } else if (t === T_BLOCK) {
+          r = 52;
+          g = 56;
+          b = 62;
+          const hatch = Math.floor(wx + wy) % 11 === 0;
+          if (hatch) {
+            r += 18;
+            g += 16;
+            b += 12;
+          }
+        } else {
+          const bx = Math.floor(wx / BLOCK);
+          const by = Math.floor(wy / BLOCK);
+          const lx = wx - bx * BLOCK;
+          const ly = wy - by * BLOCK;
+          const hsh = Math.abs((bx * 73856093) ^ (by * 19349663));
+          if ((lx < STREET || ly < STREET) && t !== T_ROCK) {
+            const curb = lx < 1.6 || ly < 1.6;
+            r = curb ? 168 : 62;
+            g = curb ? 164 : 68;
+            b = curb ? 148 : 74;
+          } else if (lx < STREET + 3.2 || ly < STREET + 3.2) {
+            r = 176;
+            g = 168;
+            b = 150;
+          } else {
+            const palette =
+              t === T_ROCK
+                ? [
+                    [98, 100, 104],
+                    [82, 84, 88],
+                    [114, 110, 102],
+                  ]
+                : [
+                    [186, 142, 108],
+                    [154, 132, 114],
+                    [196, 164, 128],
+                    [122, 136, 150],
+                    [168, 118, 98],
+                    [210, 186, 150],
+                  ];
+            const col = palette[hsh % palette.length];
+            r = col[0];
+            g = col[1];
+            b = col[2];
+            const roofL = STREET + 4.5;
+            const roofT = STREET + 4.5;
+            const roofR = BLOCK - 3.2;
+            const roofB = BLOCK - 3.2;
+            if (lx < roofL || ly < roofT || lx > roofR || ly > roofB) {
+              r -= 34;
+              g -= 30;
+              b -= 24;
+            } else {
+              const colsN = 2 + (hsh % 2);
+              const rowsN = 2 + ((hsh >> 2) % 2);
+              const cw = (roofR - roofL) / colsN;
+              const chh = (roofB - roofT) / rowsN;
+              const cx = (lx - roofL) % cw;
+              const cy = (ly - roofT) % chh;
+              if (cx > cw * 0.3 && cx < cw * 0.7 && cy > chh * 0.28 && cy < chh * 0.62) {
+                r = Math.max(20, r - 70);
+                g = Math.max(20, g - 58);
+                b = Math.max(16, b - 40);
+              }
+            }
+          }
         }
 
-        const gr = grainTable[((px * 73856093) ^ (py * 19349663)) & 1023] * 0.4;
+        if (wx < 2 || wy < 2 || wx > this.size - 2 || wy > this.size - 2) {
+          r = 176;
+          g = 168;
+          b = 150;
+        }
         const o = (pyi * cw + pxi) * 4;
-        data[o] = clamp(Math.round(r + gr), 0, 255);
-        data[o + 1] = clamp(Math.round(g + gr), 0, 255);
-        data[o + 2] = clamp(Math.round(b + gr), 0, 255);
+        data[o] = clamp(Math.round(r), 0, 255);
+        data[o + 1] = clamp(Math.round(g), 0, 255);
+        data[o + 2] = clamp(Math.round(b), 0, 255);
         data[o + 3] = 255;
       }
     }
@@ -588,7 +679,7 @@ export function terrainCostMult(t: number): number {
     case T_ROCK:
       return 1.7;
     case T_URBAN:
-      return 1.2;
+      return 1;
     case T_BLOCK:
       return 1.25;
     default:

@@ -144,7 +144,7 @@ export class Renderer {
     const maxTex = this.maxTexture();
     this.texScale = Math.min(desired, maxTex / this.world);
     this.maxZoom = (this.texScale / dprCap) * 1.12;
-    this.minZoom = this.fitZoom * 0.72;
+    this.minZoom = this.fitZoom * 0.92;
     this.roadsDirty = true;
   }
 
@@ -155,7 +155,7 @@ export class Renderer {
     this.cam.y = world / 2;
     // portrait screens are tall: start a touch closer so the map owns the width
     const portrait = this.vh > this.vw * 1.15;
-    this.cam.zoom = clamp(this.fitZoom * (portrait ? 1.16 : 1.02), this.minZoom, this.maxZoom);
+    this.cam.zoom = clamp(this.fitZoom * (portrait ? 2.25 : 2.05), this.minZoom, this.maxZoom);
     this.buildTerrainLayer(terrain);
     this.roadsDirty = true;
   }
@@ -167,11 +167,52 @@ export class Renderer {
     this.clampCamera();
   }
 
+  /** Sit in the neighbourhood, centred on the districts, not a map of the whole city. */
+  frameLocal(pts: Vec2[], closeness = 1.55): void {
+    if (!pts.length) {
+      this.cam.x = this.world / 2;
+      this.cam.y = this.world / 2;
+    } else {
+      let x = 0;
+      let y = 0;
+      for (const p of pts) {
+        x += p.x;
+        y += p.y;
+      }
+      this.cam.x = x / pts.length;
+      this.cam.y = y / pts.length;
+    }
+    this.cam.zoom = clamp(this.fitZoom * closeness, this.minZoom, this.maxZoom);
+    this.clampCamera();
+  }
+
+  /** Asphalt and roofs outside the playable square so the letterbox stays a city. */
+  private drawCityContinue(): void {
+    const ctx = this.ctx;
+    const r = this.viewRect(8);
+    const BLOCK = 56;
+    const STREET = 11;
+    ctx.fillStyle = '#3e444c';
+    ctx.fillRect(r.x0 - 8, r.y0 - 8, r.x1 - r.x0 + 16, r.y1 - r.y0 + 16);
+    const x0 = Math.floor(r.x0 / BLOCK) * BLOCK;
+    const y0 = Math.floor(r.y0 / BLOCK) * BLOCK;
+    const roofs = ['#ba8e6c', '#9a8472', '#c4a480', '#7a8896', '#a87662'];
+    for (let x = x0; x < r.x1; x += BLOCK) {
+      for (let y = y0; y < r.y1; y += BLOCK) {
+        if (x + BLOCK > -2 && x < this.world + 2 && y + BLOCK > -2 && y < this.world + 2) continue;
+        const h = Math.abs((Math.floor(x / BLOCK) * 73856093) ^ (Math.floor(y / BLOCK) * 19349663));
+        ctx.fillStyle = roofs[h % roofs.length];
+        ctx.fillRect(x + STREET, y + STREET, BLOCK - STREET - 2, BLOCK - STREET - 2);
+      }
+    }
+  }
+
   clampCamera(): void {
     const halfW = this.vw / 2 / this.cam.zoom;
     const halfH = this.vh / 2 / this.cam.zoom;
-    const marginX = Math.max(0, this.world / 2 - halfW * 0.55);
-    const marginY = Math.max(0, this.world / 2 - halfH * 0.55);
+    // keep the view inside the neighbourhood — the old margin showed empty map-edge
+    const marginX = Math.max(0, this.world / 2 - halfW);
+    const marginY = Math.max(0, this.world / 2 - halfH);
     this.cam.x = clamp(this.cam.x, this.world / 2 - marginX, this.world / 2 + marginX);
     this.cam.y = clamp(this.cam.y, this.world / 2 - marginY, this.world / 2 + marginY);
     this.cam.zoom = clamp(this.cam.zoom, this.minZoom, this.maxZoom);
@@ -398,19 +439,7 @@ export class Renderer {
     const ctx = this.ctx;
     const d = this.dpr;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    // the sea beyond the map edge: makes letterboxing look like open water
-    const bg = ctx.createRadialGradient(
-      this.canvas.width / 2,
-      this.canvas.height / 2,
-      Math.min(this.canvas.width, this.canvas.height) * 0.1,
-      this.canvas.width / 2,
-      this.canvas.height / 2,
-      Math.max(this.canvas.width, this.canvas.height) * 0.75,
-    );
-    bg.addColorStop(0, '#0c2233');
-    bg.addColorStop(0.55, '#081826');
-    bg.addColorStop(1, '#05090d');
-    ctx.fillStyle = bg;
+    ctx.fillStyle = '#3a4148';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     if (this.roadsDirty) this.buildRoadLayer(scene.net);
@@ -420,16 +449,11 @@ export class Renderer {
     const ty = this.vh / 2 - this.cam.y * z;
     ctx.setTransform(d * z, 0, 0, d * z, d * tx, d * ty);
 
-    // map backdrop
+    // the city continues past the playable neighbourhood — not an ocean
+    this.drawCityContinue();
+
     ctx.drawImage(this.terrainLayer, 0, 0, this.world, this.world);
     ctx.drawImage(this.roadLayer, 0, 0, this.world, this.world);
-
-    // coastline frame around the playable map
-    ctx.save();
-    ctx.strokeStyle = 'rgba(214,232,240,0.16)';
-    ctx.lineWidth = 2.5 / z;
-    ctx.strokeRect(0, 0, this.world, this.world);
-    ctx.restore();
 
     if (scene.showGrid && z > 0.55) this.drawGrid(z);
 
@@ -830,7 +854,9 @@ export class Renderer {
           ? 'needs a road'
           : zone.linked === 0
             ? 'no route yet'
-            : `${zone.served} served · ${zone.linked} linked`;
+            : zone.served > 0
+              ? `${zone.served} served · ${zone.linked} linked`
+              : `${zone.linked} linked`;
         ctx.font = `600 ${Math.max(8, fs - 2.5)}px ui-sans-serif, system-ui, sans-serif`;
         ctx.lineWidth = 2.6;
         ctx.strokeStyle = 'rgba(6,10,14,0.8)';

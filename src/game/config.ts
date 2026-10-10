@@ -51,15 +51,15 @@ export const ROADS: Record<RoadKind, RoadSpec> = {
   },
   highway: {
     id: 'highway',
-    name: 'Freeway',
-    short: 'FW',
+    name: 'Arterial',
+    short: 'AR',
     lanes: 6,
     width: 27,
     speed: 92,
     cost: 16,
     gradeSeparated: true,
     bridge: true,
-    desc: 'Grade-separated: it flies over streets. Connect it with ramps.',
+    desc: 'A city arterial. It flies over streets — end it on a street to make a ramp.',
   },
 };
 
@@ -78,7 +78,7 @@ export const TERRAIN_COST: Record<number, number> = {
   3: 1.0, // grass
   4: 1.35, // forest
   5: 1.7, // rock
-  6: 1.2, // urban
+  6: 1, // city ground
 };
 
 export const TERRAIN_NAMES = ['Deep water', 'Water', 'Sand', 'Grass', 'Forest', 'Rock', 'City ground'];

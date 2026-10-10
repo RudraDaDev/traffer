@@ -215,7 +215,7 @@ export const LEVELS: LevelDef[] = [
     brief: 'Two rivers cross the map. The land between them is worth holding.',
     par: { cost: 3100, commute: 50 },
   }),
-  L('r4', 1, 'Island Hop', 4200, 68, [
+  L('r4', 1, 'South Quay', 4200, 68, [
     [0.14, 0.2, 'R'],
     [0.42, 0.44, 'C', 1.3],
     [0.78, 0.2, 'R'],
@@ -491,7 +491,7 @@ export const LEVELS: LevelDef[] = [
     tools: T_FW,
     jam: true,
     terrain: { urban: [[0.62, 0.5, 0.12]], forest: 0.2 },
-    brief: 'Freeways are unlocked. Grade-separated: they fly over streets and need ramps.',
+    brief: 'Arterials are unlocked. They fly over streets — end one on a street to make a ramp.',
     tutorial: ['highway'],
     par: { cost: 5000, commute: 52 },
   }),
@@ -510,10 +510,10 @@ export const LEVELS: LevelDef[] = [
     tools: T_FW,
     jam: true,
     terrain: { urban: [[0.5, 0.5, 0.16]], forest: 0.16, rock: 0.08 },
-    brief: 'Where two freeways meet, you get an interchange. Where they meet streets, ramps.',
+    brief: 'Where two arterials meet, you get an interchange. Where they meet streets, ramps.',
     par: { cost: 5800, commute: 50 },
   }),
-  L('m3', 3, 'Coastal Freeway', 7200, 195, [
+  L('m3', 3, 'South Arterial', 7200, 195, [
     [0.12, 0.24, 'R', 1.2],
     [0.34, 0.12, 'C', 1.2],
     [0.6, 0.16, 'R', 1.2],
@@ -528,7 +528,7 @@ export const LEVELS: LevelDef[] = [
     tools: T_FW,
     jam: true,
     terrain: { coast: 's', sea: 0.24, forest: 0.12, urban: [[0.5, 0.32, 0.18]] },
-    brief: 'The sea takes the south half. One coastal freeway and a lot of on-ramps.',
+    brief: 'The waterfront takes the south edge. One arterial and a lot of on-ramps.',
     par: { cost: 6000, commute: 54 },
   }),
   L('m4', 3, 'Ramp Art', 6000, 200, [
@@ -547,7 +547,7 @@ export const LEVELS: LevelDef[] = [
     jam: true,
     terrain: { urban: [[0.5, 0.5, 0.16]], forest: 0.1 },
     demand: { start: 0.9, end: 1.35, rampEnd: 170 },
-    brief: 'Little money, big map. A freeway spine with cheap street ramps is the answer.',
+    brief: 'Little money, a big neighbourhood. An arterial spine with cheap street ramps is the answer.',
     par: { cost: 5400, commute: 52 },
   }),
   L('m5', 3, 'Sprawl', 8200, 245, [
@@ -568,7 +568,7 @@ export const LEVELS: LevelDef[] = [
     tools: T_FW,
     jam: true,
     terrain: { forest: 0.24, lakes: 1, urban: [[0.5, 0.5, 0.14]] },
-    brief: 'The map just got huge. Without a freeway you will never cross it in time.',
+    brief: 'The neighbourhood just got big. Without an arterial you will never cross it in time.',
     par: { cost: 7000, commute: 62 },
   }),
   L('m6', 3, 'Cross City', 8000, 255, [
@@ -589,7 +589,7 @@ export const LEVELS: LevelDef[] = [
     jam: true,
     terrain: { rivers: 1, riverDir: 'v', riverWidth: 44, urban: [[0.5, 0.5, 0.16]], forest: 0.12 },
     demand: { start: 0.85, end: 1.4, rampEnd: 180 },
-    brief: 'A wide river through the middle and eleven districts. Bridge the freeway.',
+    brief: 'A canal through the middle and eleven districts. Bridge it with the arterial.',
     par: { cost: 7000, commute: 56 },
   }),
   L('m7', 3, 'Megalopolis', 9000, 300, [

@@ -577,7 +577,7 @@ export class Network {
     raw: Vec2[],
     kind: RoadKind,
     budget: number,
-    opts: { bridge?: boolean; angleSnap?: boolean; gridSnap?: boolean } = {},
+    opts: { bridge?: boolean; angleSnap?: boolean; gridSnap?: boolean; pins?: Vec2[] } = {},
   ): BuildResult {
     if (raw.length < 2) return fail('too-short');
     let pts = dedupe(raw, 1.5);
@@ -590,11 +590,26 @@ export class Network {
       pts[0] = { x: roundTo(first.x, BUILD.grid), y: roundTo(first.y, BUILD.grid) };
       pts[pts.length - 1] = { x: roundTo(last.x, BUILD.grid), y: roundTo(last.y, BUILD.grid) };
       pts = dedupe(pts, 0.6);
-      if (pts.length < 2 || polylineLength(pts) < BUILD.minLength) return fail('too-short');
     }
     pts = mergeShortSegments(pts, BUILD.minSegment);
     pts = smoothPolyline(pts, 2, BUILD.minSegment * 0.55);
     pts = dedupe(pts, 0.6);
+    if (opts.pins?.length) {
+      // angle/grid snap used to walk the end of a stroke off the building you aimed at
+      for (const endIdx of [0, pts.length - 1] as const) {
+        let best: Vec2 | null = null;
+        let bd = 120;
+        for (const pin of opts.pins) {
+          const d = Math.hypot(pts[endIdx].x - pin.x, pts[endIdx].y - pin.y);
+          if (d < bd) {
+            bd = d;
+            best = pin;
+          }
+        }
+        if (best) pts[endIdx] = { x: best.x, y: best.y };
+      }
+      pts = dedupe(pts, 0.6);
+    }
     if (pts.length < 2) return fail('too-short');
     if (polylineLength(pts) < BUILD.minLength) return fail('too-short');
 
@@ -665,14 +680,13 @@ export class Network {
     if (merged.length < 2) return fail('too-short');
 
     const cuts = merged.slice(1, -1).map((a) => a.s);
-    const subs = cutPolyline(pts, cum, cuts);
+    let subs = cutPolyline(pts, cum, cuts);
+    let boundaries: RNode[] = merged.map((a) => this.resolveAttach(a));
     if (subs.length !== merged.length - 1) {
-      // geometry degenerated; fall back to one straight-ish edge chain
-      return fail('too-short');
+      // the split degenerated — still pave the stroke instead of rejecting a real road
+      subs = [pts.map((p) => ({ ...p }))];
+      boundaries = [this.resolveAttach(merged[0]), this.resolveAttach(merged[merged.length - 1])];
     }
-
-    // resolve a node for every boundary
-    const boundaries: RNode[] = merged.map((a) => this.resolveAttach(a));
 
     const created: Edge[] = [];
     let spent = 0;
@@ -1029,7 +1043,7 @@ export function terrainMult(t: number): number {
     case 5:
       return 1.7;
     case 6:
-      return 1.2;
+      return 1;
     case 7:
       return 1.25;
     default:

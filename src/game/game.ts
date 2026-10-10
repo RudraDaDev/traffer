@@ -297,6 +297,10 @@ export class Game {
     };
 
     this.renderer.setWorld(level.size, this.terrain);
+    this.renderer.frameLocal(
+      this.demand.zones,
+      this.renderer.vh > this.renderer.vw * 1.15 ? 2.25 : 2.05,
+    );
     this.renderer.clearEffects();
     this.undoStack = [];
     this.redoStack = [];
@@ -325,7 +329,7 @@ export class Game {
     this.setupWorld(level, 'endless');
     bootProgress(84, 'Connecting districts');
     const kinds: RoadKind[] = ['street', 'avenue'];
-    autoConnect(this.net, this.demand.zones, level.size * 22, new RNG(seed + '-a'), kinds);
+    autoConnect(this.net, this.demand.zones, level.size * 80, new RNG(seed + '-a'), kinds);
     refreshAnchors(this.net, this.demand.zones);
     this.money = 0;
     this.hud.show(false);
@@ -397,7 +401,8 @@ export class Game {
     this.setupWorld(level, mode);
     this.hud.show(false);
     this.input.enabled = false;
-    this.renderer.fitCamera();
+    // briefing stays in the neighbourhood, a touch wider so every district is findable
+    this.renderer.frameLocal(this.demand.zones, 1.72);
   }
 
   private beginLevel(): void {
@@ -408,6 +413,7 @@ export class Game {
     this.attract = false;
     this.input.enabled = true;
     this.hud.show(true);
+    this.renderer.frameLocal(this.demand.zones, this.renderer.vh > this.renderer.vw * 1.15 ? 2.25 : 2.05);
     this.setupTutorial();
     this.audio.unlock();
     this.audio.startAmbient();
@@ -457,7 +463,7 @@ export class Game {
 
   saveSandbox(): void {
     if (!this.level || this.mode !== 'sandbox') {
-      this.toast('Sandbox worlds only', 'bad');
+      this.toast('Sandbox cities only', 'bad');
       return;
     }
     const id = this.level.seed + '-' + this.level.size;
@@ -729,7 +735,7 @@ export class Game {
     this.updateGhost();
   }
 
-  private pointerUp(_p: Vec2): void {
+  private pointerUp(p: Vec2): void {
     if (this.state !== 'playing') return;
     if (this.bulldozing) {
       this.bulldozing = false;
@@ -739,6 +745,12 @@ export class Game {
     const pts = this.stroke;
     this.stroke = null;
     this.ghost = null;
+    // the release point is the aim point — move events stop short of it
+    const end = this.snapStrokePoint(p);
+    const last = pts[pts.length - 1];
+    if (dist(last, end) > 1.5) pts.push(end);
+    else pts[pts.length - 1] = end;
+    pts[0] = this.snapStrokePoint(pts[0]);
     if (pts.length < 2) return;
     this.buildRoad(pts);
   }
@@ -775,11 +787,34 @@ export class Game {
   }
 
   private findSnap(p: Vec2): Vec2 | null {
+    const zone = this.nearestZone(p, 1.15);
+    if (zone) return { x: zone.x, y: zone.y };
     const n = this.net.nearestNode(p.x, p.y, BUILD.nodeSnap);
     if (n) return { x: n.x, y: n.y };
     const e = this.net.nearestEdgePoint(p.x, p.y, BUILD.edgeSnap);
     if (e) return e.point;
     return null;
+  }
+
+  /** A district the player is aiming at. Roads used to stop a few metres short and never connect. */
+  private nearestZone(p: Vec2, radMul: number): { x: number; y: number; radius: number } | null {
+    if (!this.demand) return null;
+    let best: { x: number; y: number; radius: number } | null = null;
+    let bd = Infinity;
+    for (const z of this.demand.zones) {
+      const d = dist(p, z);
+      const lim = z.radius * radMul;
+      if (d <= lim && d < bd) {
+        bd = d;
+        best = z;
+      }
+    }
+    return best;
+  }
+
+  private snapStrokePoint(p: Vec2): Vec2 {
+    const snapped = this.snapPointFor(this.clampToWorld(p));
+    return snapped;
   }
 
   private updateGhost(): void {
@@ -792,9 +827,11 @@ export class Game {
       this.ghost = null;
       return;
     }
-    const est = this.net.estimateCost(this.stroke, kind);
+    const shown = this.stroke.map((p) => ({ ...p }));
+    shown[shown.length - 1] = this.snapStrokePoint(shown[shown.length - 1]);
+    const est = this.net.estimateCost(shown, kind);
     this.ghost = {
-      pts: this.stroke,
+      pts: shown,
       kind,
       valid: est.water <= 4 || !!this.toolsAvailable().bridge,
       cost: est.cost,
@@ -814,10 +851,12 @@ export class Game {
       return;
     }
     this.pushUndo();
+    const pins = [pts[0], pts[pts.length - 1]].filter((p) => this.nearestZone(p, 1.35));
     const res = this.net.buildPath(pts, kind, this.money, {
       bridge: tools.bridge !== false,
       angleSnap: this.save.settings.angleSnap,
       gridSnap: this.save.settings.gridSnap,
+      pins,
     });
     if (!res.ok) {
       this.popUndo();
@@ -864,6 +903,7 @@ export class Game {
     this.audio.bulldoze();
     haptic(10);
     this.traffic.heal();
+    this.rebind();
   }
 
   private placeZone(p: Vec2): void {
@@ -886,6 +926,13 @@ export class Game {
     this.audio.pave(0.8);
     haptic(12);
     this.toast(`${z.name} founded — ${ZONE_NAMES[this.zoneKind]}`, 'good');
+    this.rebind();
+  }
+
+  /** Districts must notice a new road immediately, not half a second later. */
+  private rebind(): void {
+    this.demand.updateAnchors();
+    this.demand.updateLinks();
   }
 
   // -------------------------------------------------------------------- undo
@@ -1185,8 +1232,8 @@ export class Game {
         check: () => this.traffic.stats.delivered >= 6,
       },
       highway: {
-        head: 'Freeways fly over streets',
-        body: 'A freeway crosses surface roads without joining them. End it on a street to build a ramp — that is how traffic gets on and off.',
+        head: 'Arterials fly over streets',
+        body: 'An arterial crosses surface roads without joining them. End it on a street to build a ramp — that is how traffic gets on and off.',
         check: () => this.net.edges.some((e) => e.kind === 'highway'),
       },
     };

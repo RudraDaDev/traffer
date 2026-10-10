@@ -96,10 +96,10 @@ export interface ChapterDef {
 }
 
 export const CHAPTERS: ChapterDef[] = [
-  { index: 0, name: 'Greenfield', subtitle: 'Learn the asphalt', color: '#5ad07a' },
-  { index: 1, name: 'River City', subtitle: 'Water in the way', color: '#4aa8ff' },
+  { index: 0, name: 'Neighbourhood', subtitle: 'Learn the streets', color: '#5ad07a' },
+  { index: 1, name: 'Canals', subtitle: 'Water in the way', color: '#4aa8ff' },
   { index: 2, name: 'Downtown', subtitle: 'Density bites back', color: '#ffb020' },
-  { index: 3, name: 'Metropolis', subtitle: 'Freeways & interchanges', color: '#ff6b8b' },
+  { index: 3, name: 'Junctions', subtitle: 'Arterials and ramps', color: '#ff6b8b' },
 ];
 
 export interface LevelResult {
