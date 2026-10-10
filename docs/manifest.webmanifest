@@ -1,0 +1,20 @@
+{
+  "name": "TRAFFER",
+  "short_name": "Traffer",
+  "description": "Draw streets, avenues and freeways. Connect the districts. Keep the city moving.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0b1015",
+  "theme_color": "#0b1015",
+  "categories": ["games", "puzzle"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
