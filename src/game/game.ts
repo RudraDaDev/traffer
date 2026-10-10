@@ -38,6 +38,7 @@ import { Screens, type ScreenCtx, type ScreenId } from '../ui/screens';
 import { haptic } from '../ui/widgets';
 import { clamp, clamp01, dist, formatMoney, formatNumber, type Vec2 } from '../core/math';
 import { RNG } from '../core/rng';
+import { bootProgress } from '../core/boot';
 import { el } from '../core/dom';
 import type { Car } from '../sim/car';
 
@@ -170,7 +171,9 @@ export class Game {
     this.toasts = el('div', { id: 'toasts' });
     this.app.appendChild(this.toasts);
 
+    bootProgress(30, 'Building interface');
     this.save.load();
+    bootProgress(42, 'Reading save');
     this.applySettings();
     this.setupInput();
     this.setupResize();
@@ -187,7 +190,9 @@ export class Game {
     window.addEventListener('pagehide', () => this.save.persist());
 
     this.loop = this.loop.bind(this);
+    bootProgress(48, 'Generating city');
     this.startAttract();
+    bootProgress(92, 'Opening the map');
     this.openScreen('menu');
     this.rafId = requestAnimationFrame(this.loop);
   }
@@ -254,7 +259,9 @@ export class Game {
     this.mode = mode;
     resetDistrictNames();
     this.rng = new RNG(level.seed + '|' + mode);
+    if (this.attract) bootProgress(56, 'Generating terrain');
     this.terrain = new Terrain(level.size).generate(level.seed, level.terrain);
+    if (this.attract) bootProgress(74, 'Painting the map');
     this.net = new Network(this.terrain, level.size);
     this.demand = new Demand(this.net);
     this.traffic = new Traffic(this.net, this.demand, level.seed + mode);
@@ -316,6 +323,7 @@ export class Game {
     this.attract = true;
     this.state = 'menu';
     this.setupWorld(level, 'endless');
+    bootProgress(84, 'Connecting districts');
     const kinds: RoadKind[] = ['street', 'avenue'];
     autoConnect(this.net, this.demand.zones, level.size * 22, new RNG(seed + '-a'), kinds);
     refreshAnchors(this.net, this.demand.zones);

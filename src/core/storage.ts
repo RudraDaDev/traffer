@@ -5,10 +5,22 @@ const PREFIX = 'traffer.v1.';
 let available = true;
 let memoryFallback: Record<string, string> = {};
 
+/** Some embeds reject storage as a promise as well as a sync throw. Never let that escape. */
+function storageHandle(): Storage | null {
+  try {
+    const ls = globalThis.localStorage;
+    return ls ?? null;
+  } catch {
+    return null;
+  }
+}
+
 try {
+  const ls = storageHandle();
+  if (!ls) throw new Error('no storage');
   const probe = PREFIX + '__probe__';
-  localStorage.setItem(probe, '1');
-  localStorage.removeItem(probe);
+  ls.setItem(probe, '1');
+  ls.removeItem(probe);
 } catch {
   available = false;
 }
@@ -17,9 +29,10 @@ export function rawGet(key: string): string | null {
   const k = PREFIX + key;
   if (!available) return memoryFallback[k] ?? null;
   try {
-    return localStorage.getItem(k);
+    return storageHandle()?.getItem(k) ?? null;
   } catch {
-    return null;
+    available = false;
+    return memoryFallback[k] ?? null;
   }
 }
 
@@ -29,23 +42,31 @@ export function rawSet(key: string, value: string): boolean {
     memoryFallback[k] = value;
     return true;
   }
+  const ls = storageHandle();
+  if (!ls) {
+    available = false;
+    memoryFallback[k] = value;
+    return true;
+  }
   try {
-    localStorage.setItem(k, value);
+    ls.setItem(k, value);
     return true;
   } catch {
     // Quota exceeded: drop the oldest sandbox saves and retry once.
     try {
       const doomed: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const kk = localStorage.key(i);
+      for (let i = 0; i < ls.length; i++) {
+        const kk = ls.key(i);
         if (kk && kk.startsWith(PREFIX + 'sandbox.')) doomed.push(kk);
       }
       doomed.sort();
-      if (doomed.length) localStorage.removeItem(doomed[0]);
-      localStorage.setItem(k, value);
+      if (doomed.length) ls.removeItem(doomed[0]);
+      ls.setItem(k, value);
       return true;
     } catch {
-      return false;
+      available = false;
+      memoryFallback[k] = value;
+      return true;
     }
   }
 }
@@ -57,9 +78,9 @@ export function rawRemove(key: string): void {
     return;
   }
   try {
-    localStorage.removeItem(k);
+    storageHandle()?.removeItem(k);
   } catch {
-    /* ignore */
+    available = false;
   }
 }
 
@@ -90,12 +111,14 @@ export function keysWith(prefix: string): string[] {
     return out;
   }
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
+    const ls = storageHandle();
+    if (!ls) return out;
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
       if (k && k.startsWith(full)) out.push(k.slice(PREFIX.length));
     }
   } catch {
-    /* ignore */
+    available = false;
   }
   return out;
 }
@@ -106,14 +129,19 @@ export function wipeAll(): void {
     return;
   }
   try {
+    const ls = storageHandle();
+    if (!ls) {
+      available = false;
+      return;
+    }
     const doomed: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
       if (k && k.startsWith(PREFIX)) doomed.push(k);
     }
-    for (const k of doomed) localStorage.removeItem(k);
+    for (const k of doomed) ls.removeItem(k);
   } catch {
-    /* ignore */
+    available = false;
   }
 }
 
