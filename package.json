@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "pages": "tsc --noEmit && vite build --outDir docs --emptyOutDir",
+    "pages": "tsc --noEmit && vite build --outDir docs --emptyOutDir && mv -f docs/index.source.html docs/index.html && cp public/.nojekyll docs/.nojekyll",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "sim": "tsx src/tools/simtest.ts",
